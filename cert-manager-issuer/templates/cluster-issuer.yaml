@@ -1,0 +1,33 @@
+apiVersion: cert-manager.io/v1alpha2
+kind: ClusterIssuer
+metadata:
+  name: {{ template "cert-manager-issuer.name" . }}-{{ .Values.letsencryptServer }}
+  labels:
+    {{- include "cert-manager-issuer.labels" . | nindent 4 }}
+spec:
+  acme:
+    # The ACME server URL
+    {{- if eq .Values.letsencryptServer "production" }}
+    server: https://acme-v02.api.letsencrypt.org/directory
+    {{- else }}
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    {{- end }}
+    # Email address used for ACME registration
+    email: {{ .Values.certEmail }}
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-{{ .Values.letsencryptServer }}
+    # Enable the HTTP-01 challenge provider
+    solvers:
+    - selector:
+        dnsZones:
+          {{- range .Values.AWSDNSzones }}
+          - {{ . | quote }}
+          {{- end }}
+      dns01:
+        route53:
+          region: {{ .Values.AWSRegion }}
+          accessKeyID: {{ .Values.AWSAccessKeyID | quote }}
+          secretAccessKeySecretRef:
+            name: route53-credentials-secret
+            key: secret-access-key

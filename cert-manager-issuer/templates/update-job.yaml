@@ -1,0 +1,47 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cert-sync-update
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  schedule: "0 12 * * *"
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cert-manager-issuer
+          containers:
+            - name: hyperkube
+              command: ["/bin/bash"]
+              image: "k8s.gcr.io/hyperkube:v1.18.8"
+              env:
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
+              args:
+              - -c
+              - |
+                for cert in $(kubectl -n $POD_NAMESPACE get certificate -o json | jq -r '.items[].metadata.name'); do
+                  namespaces=$(kubectl -n $POD_NAMESPACE get certificate -o json $cert | jq -r '.metadata.annotations["shihadeh.dev/sync-to-namespaces"]')
+                  if [ "$namespaces" != "null" ]; then
+                    while : ; do
+                      [[ "$(kubectl -n $POD_NAMESPACE get certificate $cert -o=jsonpath='{.status.conditions[0].status}')" == "True" ]] && break
+                      echo Wait for $cert to be ready
+                    done
+
+                    for ns in ${namespaces//,/ }; do
+                      kubectl get namespaces  $ns &>/dev/null|| continue
+                      echo Syncing cert $cert to namespace $ns
+                      kubectl -n $POD_NAMESPACE get secret tls-$cert -o json | \
+                      jq 'del(.metadata.namespace,.metadata.resourceVersion,.metadata.uid) | .metadata.creationTimestamp=null' | \
+                      kubectl -n $ns apply -f -
+                    done
+                  fi
+                done

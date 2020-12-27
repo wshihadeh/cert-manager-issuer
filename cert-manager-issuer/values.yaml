@@ -1,0 +1,27 @@
+# Default values for cert-manager-issuer.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# letsencryptServer allows you to choose whether to use the LetsEncrypt staging or production environments
+# Set to 'production' to order real SSL certificates
+# Set to 'staging' for testing with fake certificates to avoid rate limits.
+letsencryptServer: 'production'
+
+# This email address will be used for ACME registration when ordering the SSL certificates
+certEmail: 'dev@shihadeh.dev'
+
+# AWS Route53 configuration used for DNS challenge
+AWSDNSzones:
+  - 'shihadeh.dev'
+AWSRegion: 'eu-central-1'
+# AWS Access ID and Key are encrypted using helm secrets and defined in ../helm_vars/secrets.yaml
+# It's possible to override them here though
+AWSAccessKeyID: 'changeme'
+AWSSecretAccessKey: 'changeme'
+
+targetNamespace: 'default'
+namespaces: 'default'
+certificateName: 'wildcard-shihadeh-cloud'
+certCommonName: '*.shihadeh.dev'
+extraCertDNSNames:
+  - 'shihadeh.dev'

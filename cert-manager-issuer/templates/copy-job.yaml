@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cert-sync-copy-{{ randAlpha 10 | lower }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: cert-manager-issuer
+      containers:
+        - name: hyperkube
+          command: ["/bin/bash"]
+          image: "k8s.gcr.io/hyperkube:v1.18.8"
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: TARGET_NAMESPACE
+            value: {{ .Values.targetNamespace }}
+          args:
+          - -c
+          - |
+            kubectl get namespaces  $TARGET_NAMESPACE &>/dev/null && for cert in $(kubectl -n $POD_NAMESPACE get certificate -o json | jq -r '.items[].metadata.name'); do
+              if [ "$TARGET_NAMESPACE" != "null" ]; then
+                while : ; do
+                  [[ "$(kubectl -n $POD_NAMESPACE get certificate $cert -o=jsonpath='{.status.conditions[0].status}')" == "True" ]] && break
+                  echo Wait for $cert to be ready
+                done
+
+                echo Syncing cert $cert to namespace $TARGET_NAMESPACE
+                kubectl -n $POD_NAMESPACE get secret tls-$cert -o json | \
+                jq 'del(.metadata.namespace,.metadata.resourceVersion,.metadata.uid) | .metadata.creationTimestamp=null' | \
+                kubectl -n $TARGET_NAMESPACE apply -f -
+              fi
+            done
